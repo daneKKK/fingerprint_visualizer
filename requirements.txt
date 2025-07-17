@@ -6,3 +6,4 @@ ase
 diskcache
 ovito
 PySide6
+dash[diskcache]
