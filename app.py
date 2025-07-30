@@ -28,10 +28,10 @@ except ImportError as e:
     exit()
 
 # Константы, доступные всем процессам
-XYZ_FILENAME = "dataset.xyz"
-EMBEDDING_FILENAME = "3d_embedding.npy"
-LABELS_FILENAME = "labels.npy"
-TRIM_FACTOR = 5
+XYZ_FILENAME = "./tattoos/dataset.xyz"
+EMBEDDING_FILENAME = "./tattoos/3d_embedding.npy"
+LABELS_FILENAME = "./tattoos/labels.npy"
+TRIM_FACTOR = 1
 
 # Настройка менеджера фоновых задач
 cache = diskcache.Cache("./cache")
