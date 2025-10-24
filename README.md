@@ -1,55 +1,49 @@
-# Интерактивный визуализатор атомных конфигураций
+# Interactive Atomic Configuration Visualizer
 
-Это приложение на Dash позволяет визуализировать многокомпонентные векторные представления атомных конфигураций в трехмерном пространстве с помощью алгоритма UMAP, сопровождая каждую точку на графике визуальным представлением с помощью рендеринга через OVITO.
+This Dash application allows for the visualization of multi-component vector representations of atomic configurations in three-dimensional space using the UMAP algorithm, accompanying each point on the plot with a visual representation rendered via OVITO.
 
-## Ключевые возможности
+## Key Features
 
-- **Интерактивный 3D-график:** Отображение проекции UMAP с кластеризацией, где каждая точка представляет собой атомную структуру.
-- **Рендеринг по клику:** При клике на точку на графике справа появляется высококачественное изображение соответствующей структуры.
-- **Движок OVITO:** Для генерации изображений используется инструмент визуализации OVITO, что обеспечивает качество картинки и наглядную демонстрацию результатов.
-- **Асинхронные задачи:** Рендеринг выполняется в фоновом режиме, не блокируя и не "вешая" интерфейс приложения. Во время рендеринга отображается индикатор загрузки.
-- **Автоматический запуск:** При старте сервера приложение автоматически открывается в новой вкладке браузера.
+- **Interactive 3D Plot:** Displays a UMAP projection with clustering, where each point represents an atomic structure.
+- **Click-to-Render:** When a point on the plot is clicked, a high-quality image of the corresponding structure appears on the right.
+- **OVITO Engine:** The OVITO visualization tool is used for image generation, ensuring image quality and a clear demonstration of the results.
+- **Asynchronous Tasks:** Rendering is performed in the background without blocking or "freezing" the application interface. A loading indicator is displayed during rendering.
+- **Automatic Launch:** When the server starts, the application automatically opens in a new browser tab.
 
-## Настройка и запуск
+## Setup and Launch
 
-### 1. Предварительные требования
-- Python 3.9 или выше.
-- Виртуальное окружение (рекомендуется).
+### 1. Requirements
+- Python >= 3.9
+- A virtual environment is recommended
 
-### 2. Установка
-1.  **Клонируйте или скачайте архив** с проектом и распакуйте его.
-2.  **Создайте и активируйте виртуальное окружение:**
+### 2. Installation
+1.  **Clone or download the archive** with the project and unzip it.
+2.  **Create and activate a virtual environment:**
     ```bash
-    # Создаем окружение в папке 'venv'
+    # Create an environment in the 'venv' folder
     python -m venv venv
 
-    # Активируем его
-    # Для Windows:
+    # Activate it
+    # For Windows:
     venv\Scripts\activate
-    # Для macOS/Linux:
+    # For macOS/Linux:
     source venv/bin/activate
     ```
-3.  **Установите все необходимые зависимости** из файла `requirements.txt`:
+3.  **Install all necessary dependencies** from the `requirements.txt` file:
     ```bash
     pip install -r requirements.txt
     ```
 
-### 3. Необходимые файлы данных
-Перед запуском убедитесь, что в корневой папке проекта находятся следующие файлы:
-- `dataset.xyz` - Полный набор данных с атомными конфигурациями.
-- `3d_embedding.npy` - Файл с 3D-координатами точек после применения UMAP.
-- `labels.npy` - Файл с метками кластеров для каждой точки.
-
-### 4. Запуск приложения
-Для запуска сервера выполните в терминале следующую команду, находясь в корневой папке проекта:
+### 3. Launching the application
+To start the server, execute the following command in the terminal while in the project's root folder:
 ```bash
 python app.py
 ```
-После запуска вы увидите в консоли сообщения об инициализации и предварительном рендеринге. Через несколько секунд в вашем браузере по умолчанию автоматически откроется вкладка с приложением по адресу `http://127.0.0.1:8050`.
+After launching, you will see initialization and pre-rendering messages in the console. After a few seconds, a tab with the application will automatically open in your default browser at `http://127.0.0.1:8050`.
 
-## Как использовать приложение
-- **Левая панель:** 3D-график UMAP. Его можно вращать и масштабировать с помощью мыши. Точки раскрашены в соответствии с их кластерами.
-- **Правая панель:** Область визуализации.
-- **Действие:** **Кликните** левой кнопкой мыши по любой точке на левом графике.
-- **Ожидание:** На месте картинки справа появится индикатор загрузки. Это означает, что OVITO в фоновом режиме генерирует изображение. Процесс может занять несколько секунд.
-- **Результат:** После завершения рендеринга индикатор загрузки исчезнет, и появится новое изображение выбранной атомной структуры со связями.
+## How to use the application
+- **Left Panel:** The 3D UMAP plot. It can be rotated and scaled using the mouse. The points are colored according to their clusters.
+- **Right Panel:** The visualization area.
+- **Action:** **Click** the left mouse button on any point on the left plot.
+- **Waiting:** A loading indicator will appear in place of the image on the right. This means that OVITO is generating the image in the background. The process may take a few seconds.
+- **Result:** After the rendering is complete, the loading indicator will disappear, and a new image of the selected atomic structure with bonds will appear.
