@@ -13,64 +13,80 @@ import os
 import webbrowser
 from threading import Timer
 
-# --- Часть 1: Код, выполняемый каждым процессом (основным и рабочим) ---
-
-# Импорт тяжелых библиотек
 try:
     from ovito.io import ase as ovito_ase
     from ovito.pipeline import Pipeline, StaticSource
     from ovito.vis import Viewport, ParticlesVis
     from PySide6.QtCore import QBuffer, QByteArray, QIODevice
-    from ovito.modifiers import CreateBondsModifier, DeleteSelectedModifier
+    from ovito.modifiers import ComputePropertyModifier
     from ovito.vis import BondsVis
 except ImportError as e:
-    print(f"Ошибка импорта: {e}")
+    print(f"Import error: {e}")
     exit()
 
-# Константы, доступные всем процессам
-XYZ_FILENAME = "./tattoos/dataset.xyz"
-EMBEDDING_FILENAME = "./tattoos/3d_embedding.npy"
-LABELS_FILENAME = "./tattoos/labels.npy"
-TRIM_FACTOR = 1
+XYZ_FILENAME = "./heb2/dataset.xyz"
+EMBEDDING_FILENAME = "./heb2/3d_embedding.npy"
+INDICES_FILENAME = "./heb2/indices.npy"
+LABELS_FILENAME = "./heb2/labels.npy"
+TRIM_FACTOR = 100
 
-# Настройка менеджера фоновых задач
+XYZ_TEST_FILENAME = "./heb2/test.xyz"
+EMBEDDING_TEST_FILENAME = "./heb2/3d_embedding_test.npy"
+INDICES_TEST_FILENAME = "./heb2/indices_test.npy"
+LABELS_TEST_FILENAME = "./heb2/labels_test.npy"
+
 cache = diskcache.Cache("./cache")
 background_callback_manager = DiskcacheManager(cache)
 
-# Загрузка данных, необходимых для графика UMAP. Они маленькие и нужны всем.
-print(f"INFO: Процесс {os.getpid()} загружает данные для UMAP...")
+print(f"INFO: Process {os.getpid()} is loading data for UMAP...")
 try:
     embedding_3d = np.load(EMBEDDING_FILENAME)
     labels = np.load(LABELS_FILENAME)
+    indices = np.load(INDICES_FILENAME).astype(int)
+    train_size = len(embedding_3d)
+    
+    embedding_3d_test = np.load(EMBEDDING_TEST_FILENAME)
+    labels_test = np.load(LABELS_TEST_FILENAME)
+    indices_test = np.load(INDICES_TEST_FILENAME).astype(int)
+    
+    embedding_3d = np.concatenate([embedding_3d, embedding_3d_test], axis=0)
+    labels = np.concatenate([labels, labels_test])
+    indices = np.concatenate([indices, indices_test])
 except FileNotFoundError as e:
-    print(f"КРИТИЧЕСКАЯ ОШИБКА: Не найден файл {e.filename}.")
+    print(f"CRITICAL ERROR: File not found {e.filename}.")
     exit()
+
+print(embedding_3d.shape, labels.shape)
 
 df = pd.DataFrame({
     'UMAP1': embedding_3d[:, 0], 'UMAP2': embedding_3d[:, 1], 'UMAP3': embedding_3d[:, 2],
     'cluster': labels.astype(str), 'index': range(len(labels))
 })
 
-# Создание фигуры UMAP. Это быстро и нужно всем.
 fig_3d = px.scatter_3d(
     df, x="UMAP1", y="UMAP2", z="UMAP3", color="cluster", custom_data=['index'],
-    title="3D UMAP проекция с кластеризацией",
-    labels={'UMAP1': 'UMAP-1', 'UMAP2': 'UMAP-2', 'UMAP3': 'UMAP-3'}, opacity=0.8,
+    title="3D dataset projection",
+    labels={'UMAP1': 'X', 'UMAP2': 'Y', 'UMAP3': 'Z'}, opacity=0.8,
 )
-fig_3d.update_traces(marker=dict(size=3.5, symbol="diamond"), hovertemplate="<b>Точка: %{customdata[0]}</b><extra></extra>")
-fig_3d.update_layout(legend_title_text='Кластер', template="plotly_dark")
-print(f"INFO: Процесс {os.getpid()} подготовил UMAP.")
+fig_3d.update_traces(marker=dict(size=3.5, symbol="diamond"), hovertemplate="<b>Point: %{customdata[0]}</b><extra></extra>")
+fig_3d.update_layout(legend_title_text='Cluster', template="plotly_white")
+print(f"INFO: Process {os.getpid()} has prepared the UMAP.")
 
-
-# Определение функции рендеринга
-def render_with_ovito(atoms_obj):
+def render_with_ovito(atoms_obj, atom_index=-1, labels=None):
     data_collection = ovito_ase.ase_to_ovito(atoms_obj)
     pipeline = Pipeline(source=StaticSource(data=data_collection))
     pipeline.source.data.particles.vis.shape = ParticlesVis.Shape.Sphere
     pipeline.source.data.particles.vis.radius = 0.5
-    pipeline.modifiers.append(CreateBondsModifier(mode = CreateBondsModifier.Mode.VdWRadius))
-    #pipeline.source.data.bonds.vis.enabled = True
-    #pipeline.source.data.bonds.vis.width = 0.15 # Задаем толщину связей
+    pipeline.modifiers.append(ComputePropertyModifier(
+        output_property="Radius",
+        expressions=["ParticleType == \"B\" ? 0.85 : 1.5"]
+    ))
+    pipeline.source.data.particles.identifiers_ = np.arange(len(atoms_obj))
+    print(pipeline.source.data.particles.identifiers)
+    pipeline.modifiers.append(ComputePropertyModifier(
+        output_property="Transparency",
+        expressions=[f"ParticleIdentifier == {atom_index}? 0.0 : 0.7"]
+    ))
     pipeline.add_to_scene()
     vp = Viewport(type=Viewport.Type.PERSPECTIVE, camera_dir=(-1, -1, -1), fov=np.deg2rad(40.0))
     vp.zoom_all(size=(800, 800))
@@ -83,10 +99,8 @@ def render_with_ovito(atoms_obj):
     encoded_image = base64.b64encode(bytes(byte_array.data())).decode('utf-8')
     return f"data:image/png;base64,{encoded_image}"
 
-# Инициализация объекта Dash приложения
 app = dash.Dash(__name__)
 
-# Определение фонового callback
 @callback(
     output=[Output('point-info', 'children'), Output('atom-image', 'src')],
     inputs=Input('3d-scatter-plot', 'clickData'),
@@ -103,66 +117,59 @@ def update_image_on_click(clickData):
     point_number = point_info['pointNumber']
     point_index = fig_3d.data[curve_number].customdata[point_number][0]
     
-    # Вычисляем реальный индекс в большом xyz файле
-    full_xyz_index = point_index * TRIM_FACTOR
+    full_xyz_index = point_index
     
-    title = f"Конфигурация для точки {point_index} (структура {full_xyz_index} в датасете)"
     
-    # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Целевое чтение одного кадра из файла ---
-    # Рабочий процесс не держит в памяти весь датасет!
-    print(f"INFO: Рабочий процесс {os.getpid()} читает кадр {full_xyz_index} из {XYZ_FILENAME}...")
-    selected_atoms = ase.io.read(XYZ_FILENAME, index=full_xyz_index)
+    if full_xyz_index < train_size:
+        selected_atoms = ase.io.read(XYZ_FILENAME, index=indices[full_xyz_index])
+        atom_index = point_index - np.min(np.nonzero(indices == indices[full_xyz_index]))
+        print(point_index, indices[full_xyz_index], np.min(np.nonzero(indices == indices[full_xyz_index])), atom_index)
+        chosen_labels = labels[indices == indices[full_xyz_index]]
+        title = f"Configuration for point {point_index} (structure {indices[full_xyz_index]} in the dataset)"
     
-    image_src = render_with_ovito(selected_atoms)
+        print(f"INFO: Worker process {os.getpid()} is reading frame {full_xyz_index} from {XYZ_FILENAME}...")
+    else:
+        selected_atoms = ase.io.read(XYZ_TEST_FILENAME, index=indices[full_xyz_index])
+        chosen_labels = labels_test[indices_test == indices_test[full_xyz_index-train_size]]
+        atom_index = full_xyz_index - train_size - indices_test[full_xyz_index-train_size]
+        title = f"Configuration for point {point_index} (structure {indices_test[full_xyz_index-train_size]} in the  test dataset)"
+    
+        print(f"INFO: Worker process {os.getpid()} is reading frame {indices_test[full_xyz_index-train_size]} from {XYZ_TEST_FILENAME}...")
+    
+    image_src = render_with_ovito(selected_atoms, atom_index, chosen_labels)
     
     return title, image_src
 
-
-# --- Часть 2: Код, выполняемый ТОЛЬКО основным процессом при запуске ---
-
 if __name__ == '__main__':
-    # Эта часть кода НЕ будет выполняться рабочими процессами
+    print("\n--- STARTING MAIN SERVER ---")
     
-    print("\n--- ЗАПУСК ОСНОВНОГО СЕРВЕРА ---")
-    
-    # Зададим хост и порт как переменные для удобства
     HOST = '127.0.0.1'
     PORT = 8050
     
-    # Предварительный рендеринг начального изображения
-    print("INFO: Основной сервер выполняет предварительный рендеринг...")
+    print("INFO: Main server is performing pre-rendering...")
     initial_atoms = ase.io.read(XYZ_FILENAME, index=0)
     initial_image_src = render_with_ovito(initial_atoms)
-    initial_title = "Кликните по точке для визуализации. Показана структура 0."
-    print("INFO: Предварительный рендеринг завершен.")
+    initial_title = "Click on a point to visualize. Structure 0 is shown."
+    print("INFO: Pre-rendering complete.")
     
-    # Создание и назначение верстки (layout)
-    app.layout = html.Div(style={'backgroundColor': '#111111', 'color': '#DDDDDD', 'fontFamily': 'sans-serif'}, children=[
-        html.H1("Интерактивная визуализация конфигураций", style={'textAlign': 'center', 'padding': '20px'}),
+    app.layout = html.Div(style={'backgroundColor': '#ffffff', 'color': '#DDDDDD', 'fontFamily': 'sans-serif'}, children=[
+        html.H1("Interactive Visualization of Configurations", style={'textAlign': 'center', 'padding': '20px', 'color': '#111111'}),
         html.Div(className='row', style={'display': 'flex', 'padding': '20px'}, children=[
             html.Div(className='six columns', style={'width': '60%'}, children=[
                 dcc.Graph(id='3d-scatter-plot', figure=fig_3d, style={'height': '80vh'})
             ]),
             html.Div(className='six columns', style={'width': '40%', 'textAlign': 'center', 'paddingTop': '50px'}, children=[
-                html.H4(id='point-info', children=initial_title, style={'height': '50px'}),
+                html.H4(id='point-info', children=initial_title, style={'height': '50px', 'color': '#111111'}),
                 dcc.Loading(id="loading-spinner", type="circle",
                             children=html.Img(id='atom-image', src=initial_image_src, style={'maxWidth': '100%', 'maxHeight': '60vh', 'border': '1px solid #555', 'borderRadius': '10px'}))
             ])
         ])
     ])
     
-    # --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
-    
-    # 1. Определяем функцию, которая откроет браузер
     def open_browser():
         webbrowser.open_new(f"http://{HOST}:{PORT}")
 
-    # 2. Запускаем эту функцию с задержкой в 2 секунды в отдельном потоке.
-    #    Это гарантирует, что сервер успеет запуститься.
     Timer(2, open_browser).start()
     
-    # 3. Запускаем сам сервер
-    print(f"INFO: Сервер готов к приему подключений на http://{HOST}:{PORT}")
+    print(f"INFO: Server is ready to accept connections at http://{HOST}:{PORT}")
     app.run(host=HOST, port=PORT, debug=True)
-    
-    # --- КОНЕЦ ИЗМЕНЕНИЙ ---
